@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Text Prediction Capstone Project</title>
+  <meta charset="utf-8">
+  <meta name="description" content="Text Prediction Capstone Project">
+  <meta name="author" content="Marcel Merchat">
+  <meta name="generator" content="slidify" />
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta http-equiv="X-UA-Compatible" content="chrome=1">
+  <link rel="stylesheet" href="libraries/frameworks/io2012/css/default.css" media="all" >
+  <link rel="stylesheet" href="libraries/frameworks/io2012/css/phone.css" 
+    media="only screen and (max-device-width: 480px)" >
+  <link rel="stylesheet" href="libraries/frameworks/io2012/css/slidify.css" >
+  <link rel="stylesheet" href="libraries/highlighters/highlight.js/css/tomorrow.css" />
+  <base target="_blank"> <!-- This amazingness opens all links in a new tab. -->  
+  
+  <!-- Grab CDN jQuery, fall back to local if offline -->
+  <script src="http://ajax.aspnetcdn.com/ajax/jQuery/jquery-1.7.min.js"></script>
+  <script>window.jQuery || document.write('<script src="libraries/widgets/quiz/js/jquery.js"><\/script>')</script> 
+  <script data-main="libraries/frameworks/io2012/js/slides" 
+    src="libraries/frameworks/io2012/js/require-1.0.8.min.js">
+  </script>
+  
+  
+
+</head>
+<body style="opacity: 0">
+  <slides class="layout-widescreen">
+    
+    <!-- LOGO SLIDE -->
+        <slide class="title-slide segue nobackground">
+  <hgroup class="auto-fadein">
+    <h1>Text Prediction Capstone Project</h1>
+    <h2>Coursera-John Hopkins School of Public Health</h2>
+    <p>Marcel Merchat<br/>Data Scientist</p>
+  </hgroup>
+  <article></article>  
+</slide>
+    
+
+    <!-- SLIDES -->
+    <slide class="" id="slide-1" style="background:;">
+  <hgroup>
+    <h2>Introduction</h2>
+  </hgroup>
+  <article data-timings="">
+    <p>This project developed a text prediction algorithm that predicts the next desired word. As the emphasis is on speed, all predictions are chosen from data frames that consist of a dictionary called &quot;Gram-1,&quot; two word phrases in &quot;Gram-2,&quot; and three word phrases in &quot;Gram-3.&quot; For short sentence fragments of only a few words, the prediction is based on the phrase with the highest frequency of occurrence. If the fragment is long enough and contains at least two non-trivial words, the five most likely words are evaluated for their frequency of appearance with the non-trivial words.</p>
+
+  </article>
+  <!-- Presenter Notes -->
+</slide>
+
+<slide class="" id="slide-2" style="background:;">
+  <hgroup>
+    <h2>Uncommon Words</h2>
+  </hgroup>
+  <article data-timings="">
+    <p>In the development of the algorithm, more unusual words in the fragment were used to find other associated words and a formula was adjusted to find about one hundred such words without regard to frequency of appearance as the initial search was simply to find candidates. The candidate words were ranked for frequency of occurrence with the non-trivial words in the fragment. For words like &quot;offense&quot;, a related word like &quot;defense&quot; could usually be found amoung the candidate words; but this was dropped in order to obtain faster results and only candidates from 1-gram, 2-gram and 3-gram data files remained in the final program.  </p>
+
+  </article>
+  <!-- Presenter Notes -->
+</slide>
+
+<slide class="" id="slide-3" style="background:;">
+  <hgroup>
+    <h2>Processed Raw Data</h2>
+  </hgroup>
+  <article data-timings="">
+    <h1></h1>
+
+<p>The raw data files were first divided into 1024 segments, and a relatively small training set of these were randomly selected to develop the model. Before using the tm package to clean the data, all lines of text were divided into sentences so that only unit sentences appeared on each line which permitted mining related words only found together in the same sentence.  </p>
+
+  </article>
+  <!-- Presenter Notes -->
+</slide>
+
+<slide class="" id="slide-4" style="background:;">
+  <hgroup>
+    <h2>Only one clause or sentence per line:</h2>
+  </hgroup>
+  <article data-timings="">
+    <h1></h1>
+
+<p>Long twitter and other lines were broken up so that the prediction model was only based on phrases and relationships within a sentence. The function get_sentences broke up long lines of raw text into sentences. For example, the final sentence was isolated as Line-17 and is shown as the last line below. </p>
+
+<pre><code class="r">      traininga &lt;- get_sentences(training)
+</code></pre>
+
+<pre><code>## Error in gregexpr(pattern, text): object &#39;training&#39; not found
+</code></pre>
+
+<pre><code class="r">      training[5]
+</code></pre>
+
+<pre><code>## Error in eval(expr, envir, enclos): object &#39;training&#39; not found
+</code></pre>
+
+<pre><code class="r">##    Only Sentences      
+      get_sentences(traininga)[17]
+</code></pre>
+
+<pre><code>## Error in gregexpr(pattern, text): object &#39;traininga&#39; not found
+</code></pre>
+
+<pre><code>## Error in eval(expr, envir, enclos): object &#39;traininga&#39; not found
+</code></pre>
+
+<pre><code>## Error in tolower(phrase): object &#39;phrase&#39; not found
+</code></pre>
+
+<pre><code>## Error in tolower(phrase): object &#39;shortened_phrase&#39; not found
+</code></pre>
+
+<pre><code>## Error in xtable(choicedf, digits = 4): object &#39;choicedf&#39; not found
+</code></pre>
+
+<pre><code>## Error in eval(expr, envir, enclos): object &#39;traininga&#39; not found
+</code></pre>
+
+<pre><code>## Error in tolower(phrase): object &#39;phrase2&#39; not found
+</code></pre>
+
+<pre><code>## Error in tolower(phrase): object &#39;shortened_phrase2&#39; not found
+</code></pre>
+
+<pre><code>## Error in xtable(choicedf2, digits = 4): object &#39;choicedf2&#39; not found
+</code></pre>
+
+  </article>
+  <!-- Presenter Notes -->
+</slide>
+
+<slide class="" id="slide-5" style="background:;">
+  <hgroup>
+    <h2>Prediction Results</h2>
+  </hgroup>
+  <article data-timings="">
+    <pre><code class="r">     shortened_phrase
+</code></pre>
+
+<pre><code>## Error in eval(expr, envir, enclos): object &#39;shortened_phrase&#39; not found
+</code></pre>
+
+<pre><code class="r">     print(x1, type=&quot;html&quot;) ## Ranked Choices
+</code></pre>
+
+<pre><code>## Error in print(x1, type = &quot;html&quot;): object &#39;x1&#39; not found
+</code></pre>
+
+  </article>
+  <!-- Presenter Notes -->
+</slide>
+
+<slide class="" id="slide-6" style="background:;">
+  <hgroup>
+    <h2>More Results</h2>
+  </hgroup>
+  <article data-timings="">
+    <pre><code class="r">   shortened_phrase2
+</code></pre>
+
+<pre><code>## Error in eval(expr, envir, enclos): object &#39;shortened_phrase2&#39; not found
+</code></pre>
+
+<pre><code class="r">   print(x2, type=&quot;html&quot;) ## Ranked Choices
+</code></pre>
+
+<pre><code>## Error in print(x2, type = &quot;html&quot;): object &#39;x2&#39; not found
+</code></pre>
+
+  </article>
+  <!-- Presenter Notes -->
+</slide>
+
+    <slide class="backdrop"></slide>
+  </slides>
+  <div class="pagination pagination-small" id='io2012-ptoc' style="display:none;">
+    <ul>
+      <li>
+      <a href="#" target="_self" rel='tooltip' 
+        data-slide=1 title='Introduction'>
+         1
+      </a>
+    </li>
+    <li>
+      <a href="#" target="_self" rel='tooltip' 
+        data-slide=2 title='Uncommon Words'>
+         2
+      </a>
+    </li>
+    <li>
+      <a href="#" target="_self" rel='tooltip' 
+        data-slide=3 title='Processed Raw Data'>
+         3
+      </a>
+    </li>
+    <li>
+      <a href="#" target="_self" rel='tooltip' 
+        data-slide=4 title='Only one clause or sentence per line:'>
+         4
+      </a>
+    </li>
+    <li>
+      <a href="#" target="_self" rel='tooltip' 
+        data-slide=5 title='Prediction Results'>
+         5
+      </a>
+    </li>
+    <li>
+      <a href="#" target="_self" rel='tooltip' 
+        data-slide=6 title='More Results'>
+         6
+      </a>
+    </li>
+  </ul>
+  </div>  <!--[if IE]>
+    <script 
+      src="http://ajax.googleapis.com/ajax/libs/chrome-frame/1/CFInstall.min.js">  
+    </script>
+    <script>CFInstall.check({mode: 'overlay'});</script>
+  <![endif]-->
+</body>
+  <!-- Load Javascripts for Widgets -->
+  
+  <!-- LOAD HIGHLIGHTER JS FILES -->
+  <script src="libraries/highlighters/highlight.js/highlight.pack.js"></script>
+  <script>hljs.initHighlightingOnLoad();</script>
+  <!-- DONE LOADING HIGHLIGHTER JS FILES -->
+   
+  </html>

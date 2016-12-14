@@ -1,0 +1,1040 @@
+---
+title       : Text Prediction Capstone Project
+subtitle    : Coursera-John Hopkins School of Public Health
+author      : Marcel Merchat
+job         : Data Scientist
+framework   : io2012        # {io2012, html5slides, shower, dzslides, ...}
+highlighter : highlight.js  # {highlight.js, prettify, highlight}
+hitheme     : tomorrow      # {zenburn}
+widgets     : []            # {mathjax, quiz, bootstrap}
+mode        : selfcontained # {standalone, draft}
+knit        : slidify::knit2slides
+---
+
+## Introduction
+This project developed a text prediction algorithm that predicts the next desired word. As the emphasis is on speed, all predictions are chosen from data frames that consist of a dictionary called "Gram-1," two word phrases in "Gram-2," and three word phrases in "Gram-3." For short sentence fragments of only a few words, the prediction is based on the phrase with the highest frequency of occurrence. If the fragment is long enough and contains at least two non-trivial words, the five most likely words are evaluated for their frequency of appearance with the non-trivial words.
+
+---
+
+## Uncommon Words
+In the development of the algorithm, more unusual words in the fragment were used to find other associated words and a formula was adjusted to find about one hundred such words without regard to frequency of appearance as the initial search was simply to find candidates. The candidate words were ranked for frequency of occurrence with the non-trivial words in the fragment. For words like "offense", a related word like "defense" could usually be found amoung the candidate words; but this was dropped in order to obtain faster results and only candidates from 1-gram, 2-gram and 3-gram data files remained in the final program.  
+
+```{r, functions, echo=FALSE, message=FALSE}
+
+library(gridExtra)
+library(DT)
+library(tm)
+library(XML)
+library(NLP)
+
+options(warn=-1)
+    
+##  functions
+
+findmatchgreg <- function(text,pattern){
+    re <- gregexpr(pattern,text)
+    rm <- regmatches(text, re)
+    unlist(Filter(function(x) !identical(character(0),x), rm))
+}
+
+findmatchexec <- function(text,pattern){
+    found <- findmatchgreg(text, pattern) 
+    applied <- lapply(found,
+                      function(x) {regmatches(x, regexec(pattern,x))[[1]][2]})
+    unlist(Filter(function(x) !identical(character(0),x), applied))
+}
+
+lineLength <- function(filename){
+    testcon <- file(filename,open="r")
+    readsizeof <- 50000
+    linesread <- 50000
+    nooflines <- 0
+    while(linesread==50000)
+    {
+        linesread <- length(readLines(testcon, readsizeof))
+        nooflines <- nooflines + linesread
+    }
+    close(testcon)
+    nooflines
+}
+
+get_training_set1 <- function(data, prob, seed){
+    set.seed(seed)
+    n <- length(data)  
+    size <- 1
+    inTrain  <- rbinom(n, size, prob)
+    inTraining <- inTrain==1
+    data[inTraining]
+}
+
+get_training_set  <- function(filename, seed, length, lineqty){
+    
+    set.seed(seed)
+    sections <- 1024
+    readsizeof <- floor(length/1024)
+    
+    n <- sections
+    size <- 1 ## Each test is equivalent to a single coin flip.
+    prob <- lineqty/length
+    inTrain  <- rbinom(n, size, prob)
+    inTraining <- inTrain==1
+    inTesting <- inTrain!=1
+    
+    sectionnum <- c(1:sections)
+    dftraining <- data.frame(sectionnum,inTraining)
+    trainsections <- dftraining[dftraining$inTraining==1,]
+    x <- trainsections$sectionnum
+    
+    testcon <- file(filename,open="r")
+    
+    list1 <- lapply(x,function(x){
+        readLines(testcon, readsizeof,skip=x) })
+    close(testcon)
+    
+    trainset <- c("")
+    for(i in seq_along(x)){
+        trainset <- c(trainset,list1[[i]])
+    }
+    trainset
+}
+
+get_small_set  <- function(filename, seed, length, lineqty=10){
+    testcon <- file(filename3,open="r")
+    trainset <- readLines(testcon, lineqty)
+    close(testcon)
+    trainset
+}
+
+get_dictionary <- function(data, minimum_word_count=3){
+    pattern <- "[a-zA-Z']{1,15}"
+    anyword <- findmatchgreg(data,pattern)
+    wordquantity <- length(anyword)
+    table1 <- table(anyword)
+##  popular_dictionary is a named vector of word count
+##  where the name is the Word.
+    popular_dictionary <- table1[table1>=minimum_word_count]
+    df <- data.frame(popular_dictionary)
+    anyword <- as.character(df[,1])
+    df[,"anyword"] <- anyword
+    df[order(-df$Freq),]
+}
+
+build_data_base <- function(){ 
+    
+    library(tm)
+    library(XML)
+    options(warn = -1)
+    
+##  fileUrl <- "https://d396qusza40orc.cloudfront.net/dsscapstone/dataset/Coursera-SwiftKey.zip"
+##  download.file(fileUrl, dest="zipData.zip")
+##  unzip("zipData.zip", exdir=".")
+    
+##  offensive_url <- "https://raw.github.com/dotmh/Rudex/master/db.txt"
+##  download.file(offensive_url , dest="offensive.txt")
+    
+##  https://github.com/dwyl/english-words
+    dictionary_url <- "https://github.com/dwyl/english-words.git"
+
+    
+    
+##  read.table("./english-words-master/words2.txt")
+
+    filename1 <- "./Data/en_US/en_US.blogs.txt"
+    filename2 <- "./Data/en_US/en_US.news.txt"
+    filename3 <- "./Data/en_US/en_US.twitter.txt"
+    
+    ##############################################################################
+    ##############################################################################
+    
+    bloglineqty <-  lineLength(filename1)
+    newslineqty <-  lineLength(filename2)
+    twitlineqty <-  lineLength(filename3)
+    
+    training1 <- get_training_set(filename1, seed=334, length=bloglineqty, lineqty=2000) 
+    training2 <- get_training_set(filename2, seed=334, length=newslineqty, lineqty=4000)  
+    training3 <- get_training_set(filename3, seed=334, length=twitlineqty, lineqty=2000) 
+    
+##  Use blogs and twitter for raw data.
+##  Use news for dictionary purposes, especially for short words.
+    training <- c(training1, training3)
+    training <- get_sentences(training)
+    training2 <- get_sentences(training2)
+    ###########################################################################
+    
+    txts <- Corpus(VectorSource(training))
+    newstxt <- Corpus(VectorSource(training2))
+    
+    txts <- tm_map(txts, stripWhitespace)
+    txts <- tm_map(txts, content_transformer(tolower))
+    offensive_words <- readLines("offensive.txt")
+    txts <- tm_map(txts, removeWords, offensive_words)
+    
+    newstxt <- tm_map(newstxt, stripWhitespace)
+    newstxt <- tm_map(newstxt, content_transformer(tolower))
+    newstxt <- tm_map(newstxt, removeWords, offensive_words)
+    
+    str(txts[[100]]$content)
+    txts[[100]]$content
+    len <- length(txts)
+    len
+    x <- c(1:len)
+    applied <- lapply(x,function(x) txts[[x]]$content)
+    training <- unlist(applied)
+    length(training)
+    training_data <- data.frame(training, stringsAsFactors = FALSE)
+   
+    len_news <- length(newstxt)
+    x <- c(1:len_news)
+    applied2 <- lapply(x,function(x) newstxt[[x]]$content)
+    training2 <- unlist(applied2)
+    training2_data <- data.frame(training2, stringsAsFactors = FALSE)
+    
+     write.csv(training_data,"training.csv",row.names=FALSE)
+     write.csv(training2_data,"trainingnews.csv",row.names=FALSE)
+    
+    ##########################################################################
+    
+##  Single Word Dictionaries (1-grams)
+    
+    gram1freqa <- get_dictionary(training2,minimum_word_count=4)
+    gramchar <- nchar(gram1freqa$anyword)
+    gram1freqa8 <-  gram1freqa[gramchar>8, ]
+    head(gram1freqa8)
+    tail(gram1freqa8,10)
+    dim(gram1freqa8)[1]
+    # ##########################################################################
+    
+    gram1freqb <- get_dictionary(training2,minimum_word_count=10)
+    gramchar <- nchar(gram1freqb$anyword)
+    gram1freqb8 <-  gram1freqb[gramchar < 9, ]
+    head(gram1freqb8)
+    tail(gram1freqb8,10)
+    dim(gram1freqb8)[1]
+    
+    gramchar <- nchar(gram1freqb8$anyword)
+    gram1freqb48 <-  gram1freqb8[gramchar > 3, ]
+   
+    head(gram1freqb48)
+    tail(gram1freqb48,10)
+    dim(gram1freqb48)
+    
+    ###########################################################################
+    
+    newsfreq <- get_dictionary(training2,minimum_word_count=40)
+    newschar <- nchar(as.character(newsfreq$anyword))
+    three_letter_words <-  newsfreq[newschar==3, ]
+    
+    head(three_letter_words)
+    tail(three_letter_words,50)
+    dim(three_letter_words)[1]
+    
+    ###########################################################################
+    # 
+    two_letter_words100 <- get_dictionary(training2,minimum_word_count=250)
+    newschar <- nchar(as.character(two_letter_words100$anyword))
+    two_letter_words <-   two_letter_words100[newschar==2, ]
+    
+    head(two_letter_words)
+    tail(two_letter_words,50)
+    dim(two_letter_words)[1]
+    
+    ##########################################################################
+    
+    one_letter_words100 <- get_dictionary(training2,minimum_word_count=2000)
+    newschar <- nchar(as.character(one_letter_words100$anyword))
+    one_letter_words <-   one_letter_words100[newschar==1, ]
+    
+    head(one_letter_words)
+    tail(one_letter_words,50)
+    dim(one_letter_words)[1]
+    
+    ###########################################################################
+    
+    dictionary <- rbind(gram1freqa8,gram1freqb48,three_letter_words,
+                        two_letter_words,one_letter_words)
+    lowered <- tolower(dictionary$anyword)
+    dictionary$anyword <- lowered
+    dictionary <- dictionary[order(-dictionary$Freq,dictionary$anyword),]
+    str(dictionary)
+    head(dictionary)
+    tail(dictionary,100)
+    dim(dictionary)
+    
+    write.csv(dictionary,"dictionary.csv",row.names=FALSE)
+    
+    ##########################################################################
+    traincolumns <- get_training_columns(training,6)
+    head(traincolumns)
+    write.csv(traincolumns,"traincolumns.csv",row.names=FALSE)
+    #
+    #
+    gram2 <- get_2gram_table(traincolumns)
+    #
+    #gram2[gram2$first_word=="offense",]
+    
+    ###########################################################################
+    
+    gram2_sep1 <- get_2gram_sep(traincolumns, sep=1)
+    #
+    # head(gram2_sep1,20)
+    # tail(gram2_sep1,20)
+    #
+    # gram2_sep1[gram2_sep1$first_word=="offense",]
+    # gram2_sep1[gram2_sep1$second_word=="offense",]
+    #
+    gram2_sep2 <- get_2gram_sep(traincolumns, sep=2)
+    # head(gram2_sep2,20)
+    # tail(gram2_sep2,20)
+    #
+    # gram2_sep2[gram2_sep2$first_word=="offense",]
+    # gram2_sep2[gram2_sep2$second_word=="offense",]
+    #
+    gram2_sep3 <- get_2gram_sep(traincolumns, sep=3)
+    #  head(gram2_sep3,20)
+    # #
+    #  gram2_sep3[gram2_sep3$first_word=="offense",]
+    #  gram2_sep3[gram2_sep3$second_word=="offense",]
+    
+    gram3 <- get_3gram_table(traincolumns)
+    # head(gram3,200)
+    
+    write.csv(gram2,"gram2.csv",row.names=FALSE)
+    write.csv(gram2_sep1,"gram2_sep1.csv",row.names=FALSE)
+    write.csv(gram2_sep2,"gram2_sep2.csv",row.names=FALSE)
+    write.csv(gram2_sep3,"gram2_sep3.csv",row.names=FALSE)
+    write.csv(gram3,"gram3.csv",row.names=FALSE)
+}
+
+get_word_count <- function(data){
+    pattern <- "[a-zA-Z']{1,15}"
+    anyword <- findmatchgreg(data,pattern)
+    length(anyword)
+}
+
+get_3_gram_count <- function(data){
+    pattern <- "[a-zA-Z']{1,18}[ +]{1,2}[a-zA-Z']{1,18}[ +]{1,2}[a-zA-Z']{1,18}"
+    any3 <- findmatchgreg(data,pattern)
+    length(any3)
+}
+
+
+sentence_length <- function(sentences){
+    len <- lapply(sentences, function(x) {length(strsplit(x, "\\s+")[[1]])})
+    unlist(Filter(function(x) !identical(character(0),x), len))
+}
+
+removefirstword <- function(sentences){
+    for(i in seq_along(sentences)){
+        len <- sentence_length(sentences[i]) 
+        lenvec <- 1:len
+        if(len > 1){
+            sentence <- ""
+            for(j in seq_along(lenvec)){
+                sentence[j] <- strsplit(sentences[i], "\\s+")[[1]][j]
+            }
+            sentences[i] <- paste(sentence[2:len], collapse=" ")
+        } else {
+            sentences[i] <- NA
+        }
+    }
+    sentences
+}
+
+get_first_word <- function(sentences){
+    for(i in seq_along(sentences)){
+        len <- sentence_length(sentences[i]) 
+        if(len > 1){
+            sentences[i] <- strsplit(sentences[i], "\\s+")[[1]][1]
+        } 
+    }
+    sentences
+}
+
+removefirstworda <- function(data){
+    pattern <- "^[a-zA-Z']{1,128}\\s(.*)"
+    findmatchexec(data, pattern)
+}
+
+reverse_word_order <- function(phrase){       
+    words <- unlist(strsplit(phrase, "\\s+"))
+    sentencelength <- length(words)
+    back <- words[sentencelength]
+    
+    for(i in seq_along(words)){
+        if(sentencelength>i){
+            back[i+1] <- words[sentencelength-i]
+        }
+    }
+    tolower(back)
+}
+
+get_sentences <- function(string_vector,
+                          pattern="([a-zA-Z']{1,20})\\s[a-zA-Z' ]{1,100}\\s([a-zA-Z']{1,20})")
+{
+    findmatchgreg(string_vector, pattern) 
+}
+
+get_2gram_skip_n <- function(data,word_separation=0){
+    
+    if(word_separation==0){
+        df12 <- data.frame(data[,1],data[,2])
+        colnames(df12) <- c("word_1","word_2") 
+        df23 <- data.frame(data[,2],data[,3])
+        colnames(df23) <- c("word_1","word_2") 
+        df34 <- data.frame(data[,3],data[,4])
+        colnames(df34) <- c("word_1","word_2") 
+        df45 <- data.frame(data[,4],data[,5])
+        colnames(df45) <- c("word_1","word_2") 
+        df56 <- data.frame(data[,5],data[,6])
+        colnames(df56) <- c("word_1","word_2") 
+        
+        df <- rbind(df12,df23,df34,df45,df56)
+        df
+    }
+    
+    if(word_separation==1){
+        df13 <- data.frame(data[,1],data[,3])
+        colnames(df13) <- c("word_1","word_2") 
+        df24 <- data.frame(data[,2],data[,4])
+        colnames(df24) <- c("word_1","word_2") 
+        df35 <- data.frame(data[,3],data[,5])
+        colnames(df35) <- c("word_1","word_2") 
+        df46 <- data.frame(data[,4],data[,6])
+        colnames(df46) <- c("word_1","word_2") 
+        
+        df <- rbind(df13,df24,df35,df46)
+        df
+    }
+    
+    if(word_separation==2){
+        df14 <- data.frame(data[,1],data[,4])
+        colnames(df14) <- c("word_1","word_2") 
+        df25 <- data.frame(data[,2],data[,5])
+        colnames(df25) <- c("word_1","word_2") 
+        df36 <- data.frame(data[,3],data[,6])
+        colnames(df36) <- c("word_1","word_2") 
+        
+        df <- rbind(df14,df25,df36)
+        df
+    }
+    
+    if(word_separation==3){
+        df15 <- data.frame(data[,1],data[,5])
+        colnames(df15) <- c("word_1","word_2") 
+        df26 <- data.frame(data[,2],data[,6])
+        colnames(df26) <- c("word_1","word_2") 
+        df <- rbind(df15,df26)
+        df
+    }
+    
+    if(word_separation==4){
+        df <- data.frame(data[,1],data[,5])
+        colnames(df) <- c("word_1","word_2") 
+        df
+    }
+    
+    ok <- complete.cases(df)
+    df[ok,]
+    
+}
+
+##  Get word colmuns from training set
+get_training_columns <- function(string_vector,n=1){
+    #n<-2
+    #string_vector <- df[,1] 
+    string_vector <- as.character(string_vector)
+    
+    applied <- lapply(string_vector,function(x) {strsplit(x, "\\s+")[[1]][1]})
+    first_word <- unlist(Filter(function(x) !identical(character(0),x), applied))
+    
+    if(n>1){
+        applied <- lapply(string_vector, function(x) {strsplit(x, "\\s+")[[1]][2]})
+        second_word <- unlist(Filter(function(x) !identical(character(0),x), applied))
+        df <- data.frame(first_word,second_word)
+    }
+    if(n>2){
+        applied <- lapply(string_vector,function(x) {strsplit(x, "\\s+")[[1]][3]})
+        third_word <- unlist(Filter(function(x) !identical(character(0),x), applied))
+        df <- data.frame(first_word,second_word,third_word)
+    }
+    if(n>3){ 
+        applied <- lapply(string_vector, function(x) {strsplit(x, "\\s+")[[1]][4]})
+        fourth_word <- unlist(Filter(function(x) !identical(character(0),x), applied))
+        df <- data.frame(first_word,second_word,third_word,fourth_word)
+    }
+    if(n>4){
+        applied <- lapply(string_vector,
+                          function(x) {strsplit(x, "\\s+")[[1]][5]})
+        fifth_word <- unlist(Filter(function(x) !identical(character(0),x), applied))
+        df <- data.frame(first_word,second_word,third_word,fourth_word,fifth_word)
+    }
+    if(n>5){ 
+        applied <- lapply(string_vector,
+                          function(x) {strsplit(x, "\\s+")[[1]][6]})
+        sixth_word <- unlist(Filter(function(x) !identical(character(0),x), applied))
+        df <- data.frame(first_word,second_word, third_word, fourth_word, fifth_word, sixth_word)
+    }
+    
+    na.omit(df)
+}
+# word_frame <- traincolumns
+get_2gram_table <- function(word_frame, minimum_word_count=2){
+  
+    pair12 <- word_frame[,c(1,2)]
+    colnames(pair12) <- c("word_1","word_2") 
+    pair23 <- word_frame[,c(2,3)]
+    colnames(pair23) <- c("word_1","word_2") 
+    pair34 <- word_frame[,c(3,4)]
+    colnames(pair34) <- c("word_1","word_2") 
+    pair45 <- word_frame[,c(4,5)]
+    colnames(pair45) <- c("word_1","word_2") 
+    pair56 <- word_frame[,c(5,6)]
+    colnames(pair56) <- c("word_1","word_2") 
+    pairs <- rbind(pair12,pair23,pair34,pair45,pair56)
+ 
+    lines <- get_concatenated_strings(pairs)
+    #length(lines)
+    
+    table2 <- table(lines)
+    #sorted <- sort(table2, decreasing=TRUE)
+    popular_phrases <-  table2[table2>=minimum_word_count]
+    df <- data.frame(popular_phrases,stringsAsFactors = FALSE)
+    wordcols <- get_training_columns(df[,1],n=2)
+    wordcols$Freq <- df$Freq 
+    
+    puncts1 <- grepl("[a-zA-Z]",wordcols[,"first_word"])
+    wordcols <- wordcols[puncts1,]
+    head(wordcols)
+    
+    puncts1 <- grepl("''",wordcols[,"first_word"])
+    wordcols <- wordcols[!puncts1,]
+    head(wordcols)
+    
+#     puncts1 <- grepl("^'",wordcols[,"first_word"])
+#     wordcols <- wordcols[!puncts1,]
+#     tail(wordcols,10)
+#     
+#     puncts2 <- grepl("'$",wordcols[,"first_word"])
+#     wordcols <- wordcols[!puncts2,]
+    wordcols <- wordcols[order(-wordcols[,3]),]
+    wordcols
+}
+
+get_2gram_sep <- function(word_frame, sep=1, minimum_word_count=1){
+  
+    if(sep==1){
+        pair13 <- word_frame[,c(1,3)]
+        colnames(pair13) <- c("word_1","word_2") 
+        pair24 <- word_frame[,c(2,4)]
+        colnames(pair24) <- c("word_1","word_2") 
+        pair35 <- word_frame[,c(3,5)]
+        colnames(pair35) <- c("word_1","word_2") 
+        pair46 <- word_frame[,c(4,6)]
+        colnames(pair46) <- c("word_1","word_2") 
+        pairs <- rbind(pair13,pair24,pair35,pair46)
+    } 
+    if(sep==2){
+        pair14 <- word_frame[,c(1,4)]
+        colnames(pair14) <- c("word_1","word_2") 
+        pair25 <- word_frame[,c(2,5)]
+        colnames(pair25) <- c("word_1","word_2") 
+        pair36 <- word_frame[,c(3,6)]
+        colnames(pair36) <- c("word_1","word_2") 
+        pairs <- rbind(pair14,pair25,pair36)
+    }
+    
+    if(sep==3){
+        pair15 <- word_frame[,c(1,5)]
+        colnames(pair15) <- c("word_1","word_2") 
+        pair26 <- word_frame[,c(2,6)]
+        colnames(pair26) <- c("word_1","word_2") 
+        pairs <- rbind(pair15,pair26)
+    }
+    
+    if(sep==4){
+        pair16 <- word_frame[,c(1,6)]
+        colnames(pair16) <- c("word_1","word_2") 
+        pairs <- pair16
+    }
+    
+    lines <- get_concatenated_strings(pairs)
+    
+    table2 <- table(lines)
+    popular_phrases <- table2[table2>=minimum_word_count]
+    df <- data.frame(popular_phrases,stringsAsFactors = FALSE)
+    wordcols <- get_training_columns(df[,1],n=2)
+    wordcols$Freq <- as.numeric(as.character(df$Freq))
+    #puncts1[1:100]
+    puncts1 <- grepl("[a-zA-Z]",wordcols[,"first_word"])
+    sum(puncts1)
+    wordcols <- wordcols[puncts1,]
+    head(wordcols)
+    dim(wordcols)[1]
+    
+    puncts1 <- grepl("''",wordcols[,"first_word"])
+    wordcols <- wordcols[!puncts1,]
+    head(wordcols)
+    
+    puncts1 <- grepl("^'",wordcols[,"first_word"])
+    wordcols <- wordcols[!puncts1,]
+    tail(wordcols,10)
+    
+    puncts1 <- grepl("'$",wordcols[,"first_word"])
+    wordcols <- wordcols[!puncts1,]
+    wordcols <- wordcols[order(-wordcols[,3]),]
+    wordcols
+}
+
+get_3gram_table <- function(word_frame, minimum_word_count=1){
+   
+    triple123 <- word_frame[,c(1,2,3)]
+    colnames(triple123) <- c("word_1","word_2","word_3") 
+    triple234 <- word_frame[,c(2,3,4)]
+    colnames(triple234) <- c("word_1","word_2","word_3") 
+    triple345 <- word_frame[,c(3,4,5)]
+    colnames(triple345) <- c("word_1","word_2","word_3") 
+    triple456 <- word_frame[,c(4,5,6)]
+    colnames(triple456) <- c("word_1","word_2","word_3") 
+    
+    triple <- rbind(triple123,triple234,triple345,triple456)
+ 
+    lines <- get_concatenated_triple_strings(triple)
+    
+    table3 <- table(lines)
+    popular_phrases <- table3[table3>=minimum_word_count]
+    df <- data.frame(popular_phrases ,stringsAsFactors = FALSE)
+    wordcols <- get_training_columns(df[,1],n=3)
+    wordcols$first_word <- as.character(wordcols$first_word)
+    wordcols$second_word <- as.character(wordcols$second_word)
+    wordcols$third_word <- as.character(wordcols$third_word)
+    wordcols$Freq <- as.numeric(as.character(df$Freq))
+    wordcols[order(-wordcols[,4]),]
+}
+
+get_4_gram_table <- function(lines, minimum_word_count=1){
+    pattern <- "[a-zA-Z']{1,18}[ +]{1,2}[a-zA-Z']{1,18}[ +]{1,2}[a-zA-Z']{1,18}[ +]{1,2}[a-zA-Z']{1,18}"
+    any4 <- findmatchgreg(lines,pattern)
+    table4 <- table(any4)
+    #sorted <- sort(table, decreasing=TRUE)
+    popular_phrases <- table4[table4>=minimum_word_count]
+    data.frame(popular_phrases)
+}
+
+get_separated_pairs <- function(lines,sep=-1){
+    if(sep==-1 | sep==2){
+        skip2 <- get_2gram_skip_n(lines,2)
+        skip2
+    }
+    
+    if(sep==-1 | sep==3){    
+        skip3 <- get_2gram_skip_n(lines,3)
+        skip3
+    }
+    
+    if(sep==-1 | sep==4){
+        skip4 <- get_2gram_skip_n(lines,4)
+        skip4
+    }
+    
+    if(sep==-1){
+        ##  Return vector of 2-grams
+        rbind(skip1,skip2,skip3,skip4)
+    }
+}
+
+removeMostPunctuation <- function (x, keep="'") 
+{
+    x <- gsub(keep, "\002", x)
+    x <- gsub("[[:punct:]]+", "", x)
+    gsub("\002", keep, x, fixed = TRUE)
+}
+
+get_concatenated_strings<- function(pair_table=data.frame(c("word11","word21"),
+                                                          c("word12","word22")),
+                                    str_vector_1=c("a"),str_vector_2=c("b")){
+    if(pair_table[1,1]!="word11"){
+        len1 <- length(str_vector_1)
+        len2 <- length(str_vector_2)
+    } else {
+        len1 <- length(pair_table[,1])
+        len2 <- length(pair_table[,2])
+    }
+    
+    if(pair_table[1,1]=="word11"){
+        if(len1 != len2){
+            print("Vectors have unequal lengths at get_concatenated_strings")
+            return("Vectors have unequal lengths at get_concatenated_strings")
+        } else {
+            paste(str_vector_1,str_vector_2)}
+    } else {
+        paste(pair_table[,1],pair_table[,2])
+    }
+}
+
+get_concatenated_triple_strings<- function(pair_table=data.frame(c("word11","word21","word31"),
+                                                                 c("word12","word22","word32")),
+                                           str_vector_1=c("a"),str_vector_2=c("b"),str_vector_3=c("c")){
+    if(pair_table[1,1]!="word11"){
+        len1 <- length(str_vector_1)
+        len2 <- length(str_vector_2)
+        len3 <- length(str_vector_3)
+    } else {
+        len1 <- length(pair_table[,1])
+        len2 <- length(pair_table[,2])
+        len3 <- length(pair_table[,3])
+    }
+    
+    if(pair_table[1,1]=="word11"){
+        if(len1 != len2){
+            print("Vectors have unequal lengths at get_concatenated_strings")
+            return("Vectors have unequal lengths at get_concatenated_strings")
+        } else {
+            paste(str_vector_1,str_vector_2, str_vector_2)}
+    } else {
+        paste(pair_table[,1],pair_table[,2], pair_table[,3])
+    }
+}
+
+get_2gram_choices <- function(word, minimum=4){
+    #minimum <- 2
+    word <- gsub("^ +\\b", "", word)
+    word <- gsub("\\b +$", "", word)
+    ispunct <- grepl("''",gram2[,"first_word"])
+    gram2 <- gram2[ispunct!=TRUE,]
+    choices <- gram2[gram2[,"first_word"] == word,]
+    choices <- choices[choices[,3]>=minimum,]
+    numberofchoices <- dim(choices)[1]
+    
+    if(numberofchoices < minimum){
+        choices <- head(gram2[gram2[,"first_word"]=="the",])[1:3,]
+    }
+    choices
+}
+
+get_3gram_choices <- function(phrase, minimum=2){
+    #minimum <- 2
+    back <- reverse_word_order(phrase)
+    
+##  Get 3-grams
+    choices <- gram3[gram3[,"first_word"] == back[2] & gram3[,"second_word"] == back[1] ,]
+    choices <- choices[choices[,4]>=minimum,]
+    numberofchoices <- dim(choices)[1]
+    
+    if(numberofchoices < minimum){
+        choices <- gram2[gram2[,"first_word"]==back[1] ,]
+    }
+    choices
+}
+
+remove_words <- function(phrase){
+    #phrase <- "i am going to go home"  
+    phrase <- tolower(phrase)
+    no_words <- !grepl("[a-zA-Z]",phrase)
+    atleasttwo <- grepl("[a-zA-Z,] [a-zA-Z,]",phrase)
+    if(no_words==TRUE){ 
+      choicedf1 <- gram1
+      short <- "no words"  
+    } else {                                        # one or more
+      phrase <- removeMostPunctuation(phrase)
+      word_vec <- strsplit(phrase, "\\s+")[[1]]
+      lenwordvec <- length(word_vec)
+      
+      short_phrase_length <- ceiling(runif(1, min = 1.001, max = (lenwordvec - 0.001)))
+      
+      back <- reverse_word_order(phrase)
+      back <- back[short_phrase_length:lenwordvec]
+      back <- reverse_word_order(back)
+      paste0(back, collapse=" ")
+    }
+}
+
+bestpick <- function(phrase){       
+    #phrase <- "Very early observations on the Bills game: Offense still struggling but the "  
+    #phrase <- "Go on a romantic date at the xyz"
+
+    phrase <- tolower(phrase)
+    no_words <- !grepl("[a-zA-Z]",phrase)
+    atleasttwo <- grepl("[a-zA-Z,] [a-zA-Z,]",phrase)
+    
+    
+    if(no_words==TRUE){ 
+        choicedf1 <- gram1
+        choicedf <- choicedf1
+        bestchoice1 <<- choicedf1[1,1]
+        bestchoice2 <<- choicedf1[2,1]
+        bestchoice3 <<- choicedf1[3,1]
+        choice_table  <<- choicedf
+    } else {                                        # one or more
+        phrase <- removeMostPunctuation(phrase)
+        word_vec <- strsplit(phrase, "\\s+")[[1]]
+        lenwordvec <- length(word_vec)
+        
+        back <- reverse_word_order(phrase)
+       
+        diff <- setdiff(back[3:lenwordvec], short400)
+        lastwordcheck <- intersect(back[1], short400)
+        stripped <- c(back[1:2], diff)
+        striplen <- length(stripped)
+        
+        if(lenwordvec==1) {
+            oneword <- gsub(" +", "", phrase)           # one word
+            choicedf2 <- get_2gram_choices(oneword)
+            choicedf2 <- choicedf2[order(-choicedf2$Freq),]
+            choicedf <- choicedf2
+            bestchoice1 <<- choicedf2[1,2]
+            bestchoice2 <<- choicedf2[2,2]
+            bestchoice3 <<- choicedf2[3,2]
+            choice_table  <<- choicedf
+            
+        } else if(lenwordvec==2 | striplen < 4 | identical(lastwordcheck, character(0))){                       # two words
+
+            choicedf3 <- get_3gram_choices(phrase)
+            choicedf3 <- choicedf3[order(-choicedf3$Freq),]
+            choicedf <- choicedf3
+           
+            bestchoice1 <<- choicedf3[1,3]
+            bestchoice2 <<- choicedf3[2,3]
+            bestchoice3 <<- choicedf3[3,3]
+            choice_table  <<- choicedf
+            
+
+        } else {                                   # three or more
+ 
+        ##  last character
+            last_char_is_space <- grepl("[ .]$", phrase)
+
+      ##    Three grams
+            choicesdf3 <- get_3gram_choices(phrase)
+            number_of_3_grams <- dim(choicesdf3)[1]
+            if(number_of_3_grams == 0){
+                choicedf <- gram3[1:10,]
+            } else {
+            choices3 <- choicesdf3[order(-choicesdf3$Freq),]
+            number_of_3_grams <- dim(choices3)[1]
+            
+            minqty <- 2
+            choices3 <- choices3[choices3$Freq >= minqty,]
+
+            if(number_of_3_grams > 0 & number_of_3_grams < 5){
+                choices3 <- choices3[1:3,]
+            } else if(number_of_3_grams > 4){
+                choices3 <- choices3[1:5,]
+            }
+            choicedf <- choices3
+            ###################################################################
+            choices_in_dictionary <- intersect(choices3[,3],gram1$anyword)
+           
+            choices1 <- choices_in_dictionary
+            
+            }
+            ###################################################################
+            
+            number_of_lookback_words <- length(back)
+            lookback_count <- number_of_lookback_words - 1
+            loop_count <- 1:lookback_count 
+            
+            datadf <- 0
+            datadf <- list() 
+            columnnames <- 0
+            
+            ####################################################################
+            
+            backshort <- setdiff(back, short400)
+            backlen <- length(backshort)
+            if(backlen > 0){
+                
+                for(i in seq_along(backshort)){
+                    back_wordfreq <- 0
+                    
+                    datavector <- 0
+
+                    for(j in seq_along(choices1)){
+                        datavector[j] <- sum(gram2[#(gram2$first_word==backshort[i] &
+   
+                            (gram2$second_word==backshort[i] &
+                                 gram2$first_word==choices1[j])
+                            |
+                                (gram2$first_word==backshort[i] &
+                                     gram2$second_word==choices1[j]) 
+                            |
+                                (gram2$second_word==backshort[i] &
+                                     gram2$first_word==choices1[j])
+                            ,"Freq"])
+                        
+                    }
+                    
+                    specialsymbol <- "$"
+                    columnnames[i] <- paste("back",i,sep="")
+                    
+                    
+                    datadf[[i]] <- datavector
+                    
+                }
+                
+                ##############################################################
+
+                results <- as.matrix(sapply(datadf, as.numeric))
+                backshortlength <- dim(results)[2]
+                rowtotals <- apply(results, 1, sum)
+                coltotals <- apply(results, 2, sum)
+                
+                if(backshortlength==1){
+                    resultsdf <- data.frame(choices1,rowtotals,results[,1])
+                    colnames(resultsdf) <-  c("choices","rowtotals",columnnames[1]) 
+                }
+                if(backshortlength==2){
+                    resultsdf <- data.frame(choices1,rowtotals,results[,1],
+                                            results[,2])
+                    colnames(resultsdf) <-  c("choices","rowtotals",columnnames[1],
+                                              columnnames[2]) 
+                } else if (backshortlength>2){
+                    resultsdf <- data.frame(choices1,rowtotals,results[,1],
+                                            results[,2],results[,3])
+                    colnames(resultsdf) <-  c("choices","rowtotals",columnnames[1],
+                                              columnnames[2],columnnames[3]) 
+                }
+                
+                ####################################################################### 
+                
+                lenresults <- dim(resultsdf)[1]
+                out_vec <- as.character(resultsdf[,1][1:lenresults])
+                
+                probs <- unlist(lapply(out_vec, function(x){gram1[gram1$anyword==x,"Freq"][[1]][1]}))
+                #probs <- unlist(lapply(out_vec, function(x){gram1[gram1$anyword==x,"Freq"][[1]][1]}))
+                Word_Choices <- resultsdf[1:lenresults,1]
+                Odds_Vector <- resultsdf[1:lenresults,2]/probs[1:lenresults]
+                output <- data.frame(Word_Choices,Odds_Vector)
+                punct <- grepl("[[:punct:]]",Word_Choices)
+                output <- output[punct==FALSE,]
+                choicedf <- output[order(-output$Odds_Vector),]
+               
+                bestchoice1 <<- as.character(choicedf[1,1])
+                bestchoice2 <<- as.character(choicedf[2,1])
+                bestchoice3 <<- as.character(choicedf[3,1])
+                choice_table <<- choicedf
+
+            } #word selection algorithym
+        } #word selection algorithym with no matches
+       
+    } # no words
+    choicedf
+} 
+
+```
+
+
+---
+
+## Processed Raw Data
+========================================================
+
+The raw data files were first divided into 1024 segments, and a relatively small training set of these were randomly selected to develop the model. Before using the tm package to clean the data, all lines of text were divided into sentences so that only unit sentences appeared on each line which permitted mining related words only found together in the same sentence.  
+
+```{r, selectdata, fig.width=12, fig.height=9, echo=FALSE, results='asis'}
+
+library(NLP)
+library(tm)
+library(XML)
+
+library(gridExtra)
+library(grid)
+library(xtable)
+options(warn = -1)
+    
+##  fileUrl <- "https://d396qusza40orc.cloudfront.net/dsscapstone/dataset/Coursera-SwiftKey.zip"
+##  download.file(fileUrl, dest="zipData.zip")
+##  unzip("zipData.zip", exdir=".")
+    
+##  offensive_url <- "https://raw.github.com/dotmh/Rudex/master/db.txt"
+##  download.file(offensive_url , dest="offensive.txt")
+    
+##  https://github.com/dwyl/english-words
+    #dictionary_url <- "https://github.com/dwyl/english-words.git"
+
+##  read.table("./english-words-master/words2.txt")
+
+    filename1 <- "./Data/en_US/en_US.blogs.txt"
+    filename2 <- "./Data/en_US/en_US.news.txt"
+    filename3 <- "./Data/en_US/en_US.twitter.txt"
+    
+    ##############################################################################
+    ##############################################################################
+    
+    bloglineqty <-  lineLength(filename1)
+    newslineqty <-  lineLength(filename2)
+    twitlineqty <-  lineLength(filename3)
+    
+    training1 <- get_training_set(filename1, seed=334, length=bloglineqty, lineqty=1000) 
+    training2 <- get_training_set(filename2, seed=334, length=newslineqty, lineqty=1000)  
+    training3 <- get_training_set(filename3, seed=334, length=twitlineqty, lineqty=2000) 
+    
+##  Use blogs and twitter for raw data.
+##    Use news for dictionary purposes, especially for short words.
+      training <- c(training1, training3)
+      
+```
+
+---
+
+## Only one clause or sentence per line:
+========================================================
+Long twitter and other lines were broken up so that the prediction model was only based on phrases and relationships within a sentence. The function get_sentences broke up long lines of raw text into sentences. For example, the final sentence was isolated as Line-17 and is shown as the last line below. 
+
+```{r, sentences, echo=TRUE, results='asis'}
+
+      traininga <- get_sentences(training)
+      training[5]
+      
+##    Only Sentences      
+      get_sentences(traininga)[17]
+
+```
+
+
+```{r, datamining, echo=FALSE, results='asis'}
+    
+    gram1 <- read.csv("dictionary.csv",stringsAsFactors = FALSE)
+    gram2 <- read.csv("gram2.csv",     stringsAsFactors = FALSE)
+    gram3 <- read.csv("gram3.csv",     stringsAsFactors = FALSE)
+    gram1 <<- gram1
+
+punct <- grepl("[[:punct:]]",gram1[,1])
+words_with_punctution <- gram1[punct==TRUE,1]
+mispelled_punctution <- gsub("[[:punct:]]+", "", words_with_punctution)
+top400 <- as.character(head(gram1,400)[,1])
+short400 <- top400[nchar(top400)<5]
+
+phrase <- traininga[17]
+shortened_phrase <- remove_words(phrase)  
+choicedf <- bestpick(shortened_phrase)
+x1 <- xtable(choicedf, digits=4)
+
+phrase2 <- traininga[100]
+shortened_phrase2 <- remove_words(phrase2)  
+choicedf2 <- bestpick(shortened_phrase2)
+x2 <- xtable(choicedf2, digits=4)
+
+```
+
+---
+
+## Prediction Results
+
+```{r grams, echo=TRUE, results='asis'}
+     
+     shortened_phrase
+     print(x1, type="html") ## Ranked Choices
+
+```
+
+---
+
+## More Results
+
+```{r preparetables, echo=TRUE, results='asis'}  
+
+   shortened_phrase2
+   print(x2, type="html") ## Ranked Choices
+
+```
+
