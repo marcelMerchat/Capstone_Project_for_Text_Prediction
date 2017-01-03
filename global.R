@@ -493,7 +493,7 @@ get_2gram_choices <- function(word, minimum=4){
 }
 
 
-get_3gram_choices <- function(phrase, minimum=2){
+get_3gram_choices <- function(phrase, minimum=1){
     #minimum <- 2
     #phrase <- "Go on a romantic date at the"
     #backref<-1
@@ -505,7 +505,7 @@ get_3gram_choices <- function(phrase, minimum=2){
     numberofchoices <- dim(choices)[1]
     
      if(numberofchoices < minimum){
-         choices <- gram3[gram3[,"second_word"] == back[1],]
+         choices <- gram2[gram2[,"first_word"] == back[1],]    ## gram3[gram3[,"second_word"] == back[1],]
          #choices$second_word <- gram2[gram2[,"first_word"]==back[1] ,2]
      }
     choices
@@ -588,14 +588,19 @@ get_uncommon_words <- function(phrase, gram_3_choices){
     word_vector
 }
 
-bestpick <- function(phrase){       
+get_choices <- function(phrase){       
     #phrase <- "Very early observations on the Bills game: Offense still struggling but the "  
     #phrase <- "Go on a romantic date at the xyz"
 
     phrase <- tolower(phrase)
+    lenwordvec <- 1
+    striplen <- 1
     no_words <- !grepl("[a-zA-Z]",phrase)
     atleasttwo <- grepl("[a-zA-Z,] [a-zA-Z,]",phrase)
     
+    bestchoice1 <<- "the"
+    bestchoice2 <<- "a"
+    bestchoice3 <<- "I"
     
     if(no_words==TRUE){ 
         choicedf1 <- gram1
@@ -604,21 +609,24 @@ bestpick <- function(phrase){
         bestchoice2 <<- choicedf1[2,1]
         bestchoice3 <<- choicedf1[3,1]
         choice_table  <<- choicedf
-    } else {                                        # one or more
-        phrase <- removeMostPunctuation(phrase)
-        word_vec <- strsplit(phrase, "\\s+")[[1]]
-        lenwordvec <- length(word_vec)
-        #print(paste("lenwordvec",lenwordvec))
+    } else {
         
+    }
+    
+    if (no_words==FALSE) {
+        phrase <- removeMostPunctuation(phrase)
+        word_vec <- strsplit(phrase, "\\s+")[[1]]  # convert phrase to a word vector
+        lenwordvec <- length(word_vec)
         back <- reverse_word_order(phrase)
-        # print(back)
-        diff <- setdiff(back[3:lenwordvec], short400)
-        lastwordcheck <- intersect(back[1], short400)
+        diff <- setdiff(back[3:lenwordvec], short400)   #unusual words at the beginning of the phrase
+        lastwordcheck <- intersect(back[1], short400)   #Last word is common
         stripped <- c(back[1:2], diff)
         striplen <- length(stripped)
-        
-        if(lenwordvec==1) {
-            oneword <- gsub(" +", "", phrase)           # one word
+    } else {
+        print("")
+    }
+    if (no_words==FALSE & lenwordvec==1) {                            # one word
+            oneword <- gsub(" +", "", phrase)
             choicedf2 <- get_2gram_choices(oneword)
             choicedf2 <- choicedf2[order(-choicedf2$Freq),]
             choicedf <- choicedf2
@@ -626,193 +634,42 @@ bestpick <- function(phrase){
             bestchoice2 <<- choicedf2[2,2]
             bestchoice3 <<- choicedf2[3,2]
             choice_table  <<- choicedf
-            
-        } else if(lenwordvec==2 | striplen < 4 | identical(lastwordcheck, character(0))){                       # two words
+    } else {
+        print("")
+    }
+    
+    if(lenwordvec >= 2 ){ 
+     
+    # two or more words  
+     
+    ##  Three grams
+             choicedf3 <- get_3gram_choices(phrase)
+             choicedf3 <- choicedf3[order(-choicedf3$Freq),]
+             choicedf <- choicedf3
 
-            choicedf3 <- get_3gram_choices(phrase)
-            choicedf3 <- choicedf3[order(-choicedf3$Freq),]
-            choicedf <- choicedf3
-            # print("gram3")
-            # print(head(choicedf3))
-            bestchoice1 <<- choicedf3[1,3]
-            bestchoice2 <<- choicedf3[2,3]
-            bestchoice3 <<- choicedf3[3,3]
-            choice_table  <<- choicedf
-            #print(bestchoice1)
-
-        } else {                                   # three or more
- 
-        ##  last character
-            last_char_is_space <- grepl("[ .]$", phrase)
-
-        ##  phrase ends with space
-            
-            #         if(last_char_is_space==FALSE
-            #            &
-            #            nchar(back[1]) < 3
-            #            &
-            #            back[1] != "a")
-            #             {
-            #                 back <- back[2:sentencelength]
-            #                 try_to_spell <- TRUE
-            #             }
-            
-            ##############################################################################
-            
-            ##  Three grams
-            
-            choicesdf3 <- get_3gram_choices(phrase)
-            number_of_3_grams <- dim(choicesdf3)[1]
-            if(number_of_3_grams == 0){
-                choicedf <- gram3[1:10,]
-            } else {
-            choices3 <- choicesdf3[order(-choicesdf3$Freq),]
-            number_of_3_grams <- dim(choices3)[1]
-            
-            minqty <- 2
-            choices3 <- choices3[choices3$Freq >= minqty,]
-
-            #print(paste("three gram count is",number_of_3_grams))
-            
-
-            if(number_of_3_grams > 0 & number_of_3_grams < 5){
-                choices3 <- choices3[1:3,]
-            } else if(number_of_3_grams > 4){
-                choices3 <- choices3[1:5,]
-            }
-            choicedf <- choices3
-            ##############################################################################
-            ##############################################################################
-            
-            choices_in_dictionary <- intersect(choices3[,3],gram1$anyword)
-            # if(backlen > 2){
-            #     
-            #     #debug(get_uncommon_words)
-            #     uncommonchoices <- get_uncommon_words(phrase, choices3)
-            #     uncommonchoices <- setdiff(uncommonchoices, back)
-            #     uncommonchoices <- setdiff(uncommonchoices, short400)
-            #     choices <- unique(c(uncommonchoices,choices_in_dictionary))
-            # } else {
-            #     choices <- choices_in_dictionary
-            # }
-            
-            choices1 <- choices_in_dictionary
-            #choices1 <- sort(choices)
-            
-            }  # three or more
-            
-            ###################################################################
-            
-            number_of_lookback_words <- length(back)
-            lookback_count <- number_of_lookback_words - 1
-            loop_count <- 1:lookback_count 
-            
-            datadf <- 0
-            datadf <- list() 
-            columnnames <- 0
-            
-            ####################################################################
-            
-            backshort <- setdiff(back, short400)
-            backlen <- length(backshort)
-            if(backlen > 0){
-                
-                for(i in seq_along(backshort)){
-                    back_wordfreq <- 0
-                    
-                    datavector <- 0
-                    #head(gram2)
-                    
-                    for(j in seq_along(choices1)){
-                        datavector[j] <- sum(gram2[#(gram2$first_word==backshort[i] &
+             cols <- dim(choicedf)[2]
+             bestchoice1 <<- choicedf3[1,cols-1]
+             bestchoice2 <<- choicedf3[2,cols-1]
+             bestchoice3 <<- choicedf3[3,cols-1]
+             choice_table  <<- choicedf
+     
+         } else {       
    
-                            (gram2$second_word==backshort[i] &
-                                 gram2$first_word==choices1[j])
-                            |
-                                (gram2$first_word==backshort[i] &
-                                     gram2$second_word==choices1[j]) 
-                            |
-                                (gram2$second_word==backshort[i] &
-                                     gram2$first_word==choices1[j])
-                            ,"Freq"])
-                        #datavector
-                    }
-                    
-                    specialsymbol <- "$"
-                    columnnames[i] <- paste("back",i,sep="")
-                    #datavector
-                    
-                    datadf[[i]] <- datavector
-                    #datadf
-                }
-                
-                ##############################################################
-                # print(backshort)
-                # print(choices1)
-                results <- as.matrix(sapply(datadf, as.numeric))
-                backshortlength <- dim(results)[2]
-                rowtotals <- apply(results, 1, sum)
-                coltotals <- apply(results, 2, sum)
-                
-                if(backshortlength==1){
-                    resultsdf <- data.frame(choices1,rowtotals,results[,1])
-                    colnames(resultsdf) <-  c("choices","rowtotals",columnnames[1]) 
-                }
-                if(backshortlength==2){
-                    resultsdf <- data.frame(choices1,rowtotals,results[,1],
-                                            results[,2])
-                    colnames(resultsdf) <-  c("choices","rowtotals",columnnames[1],
-                                              columnnames[2]) 
-                } else if (backshortlength>2){
-                    resultsdf <- data.frame(choices1,rowtotals,results[,1],
-                                            results[,2],results[,3])
-                    colnames(resultsdf) <-  c("choices","rowtotals",columnnames[1],
-                                              columnnames[2],columnnames[3]) 
-                }
-                
-                ####################################################################### 
-                
-                #head(resultsdf)
-                lenresults <- dim(resultsdf)[1]
-                out_vec <- as.character(resultsdf[,1][1:lenresults])
-                
-                probs <- unlist(lapply(out_vec, function(x) {gram1[gram1$anyword==x,"Freq"][[1]][1]}))
-                wordsvec <- resultsdf[1:lenresults,1]
-                oddsvec <- resultsdf[1:lenresults,2]/probs[1:lenresults]
-                output <- data.frame(wordsvec,oddsvec)
-                punct <- grepl("[[:punct:]]",wordsvec)
-                output <- output[punct==FALSE,]
-                choicedf <- output[order(-output$oddsvec),]
-                #     if(try_to_spell == TRUE) {
-                #         lastletters <- findmatchexec(back[1],"\\w")
-                #         pattern <- paste("^",lastletters,sep=" ")
-                #         spellingmatches <- grep(pattern, resultsdf[,1])
-                #         out <- spellingmatches[1]
-                #     }
-                #print(choicedf)
-                bestchoice1 <<- as.character(choicedf[1,1])
-                bestchoice2 <<- as.character(choicedf[2,1])
-                bestchoice3 <<- as.character(choicedf[3,1])
-                choice_table <<- choicedf
-
-            } #word selection algorithym
-        } #word selection algorithym with no matches
-       
-    } # no words
-    print(str(choicedf))
+    } # two or more else
+    
+    numberofchoices <- dim(choicedf)[1]
+    if(numberofchoices < 1){
+        bestchoice1 <<- "the"
+        bestchoice2 <<- "a"
+        bestchoice3 <<- "I"
+        
+    } else {
+    }
+    
     choicedf
+    
 } 
 
-get_choices <- function(phrase){
-    #     bestchoice1 <- "the"
-    #     bestchoice2 <- "a"
-    #     bestchoice3 <- "I"
-    debug(bestpick)
-    choicedf <- bestpick(phrase)
-    print(bestchoice1)
-    print(bestchoice2)
-    print(bestchoice3)
-    print(choicedf)
-}
+
 
 

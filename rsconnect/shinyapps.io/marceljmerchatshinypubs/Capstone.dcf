@@ -1,0 +1,10 @@
+name: Capstone
+account: marceljmerchatshinypubs
+server: shinyapps.io
+appId: 148563
+bundleId: 666176
+url: https://marceljmerchatshinypubs.shinyapps.io/Capstone/
+when: 1483304424.93358
+asMultiple: FALSE
+asStatic: FALSE
+ignoredFiles: globalc.R|globalnew.R|globalworks.R

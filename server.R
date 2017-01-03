@@ -28,28 +28,28 @@ server <- shinyServer(function(input, output){
     x = "the"
     y = "a"
     z = "to"
-    anyword <- c("The","To","A")
+    Words <- c("The","To","A")
     Frequency <- c(1,2,3)
     
-    r <- data.frame(anyword,Frequency)
+    r <- data.frame(Words, Frequency)
  
         x <- reactive({ 
-              bestpick(input$text)
+            get_choices(input$text)
               bestchoice1
         })
         
         y <- reactive({ 
-            bestpick(input$text)
+            get_choices(input$text)
             bestchoice2
         })
         
         z <- reactive({ 
-            bestpick(input$text)
+            get_choices(input$text)
             bestchoice3
         })
         
         r <- reactive({ 
-              bestpick(input$text)
+              get_choices(input$text)
               choice_table
            })
         
