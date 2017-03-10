@@ -1,9 +1,9 @@
-name: Capstone
+name: Capstone_Project_for_Text_Prediction
 account: marceljmerchatshinypubs
 server: shinyapps.io
 appId: 148563
 bundleId: 666176
-url: https://marceljmerchatshinypubs.shinyapps.io/Capstone/
+url: https://marceljmerchatshinypubs.shinyapps.io/Capstone_Project_for_Text_Prediction/
 when: 1483304424.93358
 asMultiple: FALSE
 asStatic: FALSE
